@@ -1,0 +1,113 @@
+-- 1. Kategorien (z. B. Frühstück, Mittag, Abend, Snacks, Pizza, Salate, ...)
+create table categories (
+  id          uuid primary key default uuid_generate_v4(),
+  name        text not null unique,          -- z. B. "Hauptgerichte", "Beilagen"
+  description text,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+-- 2. Gerichte (die Basis-Gerichte, die du als Admin anlegst)
+create table dishes (
+  id              uuid primary key default uuid_generate_v4(),
+  category_id     uuid references categories(id) on delete set null,
+  name            text not null,                   -- z. B. "Pizza Margherita", "Hähnchen mit Brokkoli"
+  description     text,
+  prep_time_min   integer,                         -- Zubereitungszeit in Minuten
+  image_url       text,                            -- wird später von Supabase Storage kommen
+  is_available    boolean,
+  is_template     boolean default false,           -- true = Vorlage zum Duplizieren
+  created_by      uuid references auth.users(id),  -- wer hat es angelegt (du als Admin)
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now()
+);
+
+-- 3. Optionen-Gruppen (z. B. "Protein", "Gemüse", "Soße", "Toppings", "Brotart")
+create table option_groups (
+  id          uuid primary key default uuid_generate_v4(),
+  name        text not null,                   -- z. B. "Proteinquelle", "Beilage"
+  type        text not null                     -- 'single' (Radio), 'multi' (Checkbox), 'quantity'
+    check (type in ('single', 'multi', 'quantity')),
+  required    boolean default false,
+  description text,
+  sort_order  integer default 0,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+-- 4. Join-Tabelle: dish_option_groups
+create table dish_option_groups (
+  dish_id         uuid references dishes(id) on delete cascade not null,
+  option_group_id uuid references option_groups(id) on delete cascade not null,
+  sort_order      integer not null default 0,   -- Reihenfolge der Gruppen PRO Gericht
+  created_at      timestamptz default now(),
+
+  -- Composite Primary Key → verhindert Duplikate
+  primary key (dish_id, option_group_id)
+);
+
+-- 5. Einzelne Optionen / Komponenten innerhalb einer Gruppe
+create table options (
+  id              uuid primary key default uuid_generate_v4(),
+  group_id        uuid references option_groups(id) on delete cascade not null,
+  name            text not null,                   -- z. B. "Hähnchenbrust", "Brokkoli", "Tomatensoße"
+  description     text,
+  price_adjust    numeric(10,2) default 0,         -- falls später mal relevant
+  default_selected boolean default false,
+  sort_order      integer default 0,
+  is_available    boolean,
+
+  -- Nährwerte pro 100g oder pro Einheit (Basis für Berechnung)
+  protein_per_100g    numeric(10,2),
+  carbs_per_100g      numeric(10,2),
+  gi                  integer,                    -- Glykämischer Index
+  gl                  numeric(10,2),              -- Glykämische Last (oft GI * KH / 100)
+  portion_size_g      numeric(10,2) default 100,  -- Standardmenge für die Nährwerte
+  unit                text default 'g',           -- g, Stück, EL, etc.
+
+  created_at      timestamptz default now()
+);
+
+-- 6. Bestellungen (was dein Partner bestellt)
+create table orders (
+  id              uuid primary key default uuid_generate_v4(),
+  user_id         uuid references auth.users(id) not null,  -- der Besteller (Partner)
+  status          text default 'new'                     -- new, confirmed, done, cancelled
+    check (status in ('new', 'confirmed', 'done', 'cancelled')),
+  created_at      timestamptz default now(),
+  updated_at      timestamptz default now(),
+  total_protein   numeric(10,2),                        -- auto-berechnet
+  total_carbs     numeric(10,2),
+  total_gi        numeric(10,2),
+  total_gl        numeric(10,2),
+  notes           text
+);
+
+-- 7. Bestell-Items (eine Bestellung kann mehrere Gerichte haben, aber bei dir wahrscheinlich meist eins)
+create table order_items (
+  id              uuid primary key default uuid_generate_v4(),
+  order_id        uuid references orders(id) on delete cascade not null,
+  dish_id         uuid references dishes(id) not null,
+  quantity        integer default 1,
+  calculated_protein  numeric(10,2),
+  calculated_carbs    numeric(10,2),
+  calculated_gi       numeric(10,2),
+  calculated_gl       numeric(10,2),
+  notes           text
+);
+
+-- 8. Gewählte Optionen pro Bestell-Item (die konkrete Auswahl)
+create table order_item_options (
+  id              uuid primary key default uuid_generate_v4(),
+  order_item_id   uuid references order_items(id) on delete cascade not null,
+  option_id       uuid references options(id) not null,
+  quantity        numeric(10,2) default 1,     -- falls z. B. 2x Hähnchen
+  selected        boolean default true
+);
+
+
+Updates:
+
+Nach Namensänderung in dishes/option_groups 
+UPDATE dish_option_groups
+SET dish_id = dish_id;   -- triggert den Trigger für jede Zeile
