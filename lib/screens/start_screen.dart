@@ -1,16 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'package:robben_futter/providers/auth_providers.dart'; // ← hier liegen isAdminProvider & userRoleProvider
-import 'package:robben_futter/screens/test_dishes_screen.dart';        // dein TestDishesScreen-Import
-import 'package:robben_futter/screens/login_screen.dart';
+import '../providers/auth_providers.dart';
+import 'login_screen.dart';
+import 'test_dishes_screen.dart'; // dein TestDishesScreen
 
 class StartScreen extends ConsumerWidget {
   const StartScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Hole den Admin-Status aus Riverpod
     final isAdmin = ref.watch(isAdminProvider);
 
     return Scaffold(
@@ -21,16 +20,34 @@ class StartScreen extends ConsumerWidget {
             icon: const Icon(Icons.logout),
             tooltip: 'Ausloggen',
             onPressed: () async {
-              await ref.read(authProvider).signOut();
+              try {
+                await ref.read(authProvider).signOut();
 
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const LoginScreen()),
-              );
+                // Navigation zuerst → verhindert Kontext-Probleme nach invalidate
+                if (context.mounted) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  );
+                }
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Ausgeloggt')),
-              );
+                // Danach State zurücksetzen (auch wenn der alte Kontext weg ist → Riverpod ist global)
+                ref.invalidate(userRoleProvider);
+                ref.invalidate(isAdminProvider);
+                // ref.invalidate(authProvider); // meist nicht nötig, da signOut() das schon triggert
+
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Erfolgreich ausgeloggt')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Logout fehlgeschlagen: $e')),
+                  );
+                }
+              }
             },
           ),
         ],
@@ -39,85 +56,50 @@ class StartScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text('Willkommen bei RobbenFutter!'),
-            const SizedBox(height: 20),
+            const Text(
+              'Willkommen bei RobbenFutter!',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
             const Text('Supabase ist bereit – lass uns loslegen'),
+            const SizedBox(height: 48),
 
-            const SizedBox(height: 40),
-
-            // 1. Der normale Test-Button (für alle sichtbar)
-            ElevatedButton(
+            // Normaler Button – für alle sichtbar
+            ElevatedButton.icon(
+              icon: const Icon(Icons.restaurant_menu),
+              label: const Text('Gerichte laden & testen'),
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                      builder: (context) => TestDishesScreen()),
+                  MaterialPageRoute(builder: (_) => TestDishesScreen()),
                 );
               },
-              child: const Text('Gerichte laden & testen'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
 
-            // 2. Der neue Admin-Button (nur für Admin sichtbar / aktiv)
+            // Admin-spezifischer Bereich
             if (isAdmin)
               ElevatedButton.icon(
-                //icon: const Icon(Icons.admin_panelsettings),
+                icon: const Icon(Icons.admin_panel_settings),
                 label: const Text('Admin: Neues Gericht anlegen'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
                 ),
                 onPressed: () {
-                  // Hier kommt später die Admin-Aktion rein, z. B.:
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text('Admin-Bereich: Hier könntest du Gerichte verwalten'),
+                      content: Text('Admin-Bereich: Gerichte verwalten (zukünftig)'),
                     ),
                   );
-                  // Navigator.push(context, MaterialPageRoute(builder: () => AdminDishEditScreen()));
+                  // Später: Navigator.push(... AdminDishEditScreen());
                 },
               )
             else
               const Text(
                 'Du bist normaler User – Admin-Funktionen ausgeblendet',
-                style: TextStyle(color: Colors.grey),
+                style: TextStyle(color: Colors.grey, fontStyle: FontStyle.italic),
               ),
-
-            // Alternative: Button immer anzeigen, aber deaktivieren
-            // ElevatedButton(
-            //   onPressed: isAdmin ? () { /* Admin-Aktion */ } : null,
-            //   child: const Text('Admin: Neues Gericht'),
-            // ),
-            const SizedBox(height: 40),
-
-            ElevatedButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Ausloggen'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-              ),
-              onPressed: () async {
-                await ref.read(authProvider).signOut();  // ← dein signOut aus authprovider.dart
-
-                ref.invalidate(authProvider);
-                ref.invalidate(userRoleProvider);
-                ref.invalidate(isAdminProvider);
-
-                ref.refresh(authProvider);
-
-                // Optional: Zurück zum Login navigieren
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => LoginScreen()
-                  ),
-                );
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Erfolgreich ausgeloggt')),
-                );
-              },
-            ),
           ],
         ),
       ),

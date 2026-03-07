@@ -27,17 +27,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _pwCtrl.text.trim(),
       );
 
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home'); // oder dein nächstes Screen
-      }
+      if (!mounted) return;
+
+      // Besser: pushReplacementNamed mit dem Root-Routen-Namen
+      // oder direkt: Navigator.pushReplacement(...)
+      Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
-      setState(() {
-        _error = e.toString().contains('Invalid') ? 'Falsche E-Mail oder Passwort' : e.toString();
-      });
+      String msg;
+      if (e.toString().contains('Invalid login credentials')) {
+        msg = 'Falsche E-Mail oder Passwort';
+      } else {
+        msg = 'Login fehlgeschlagen: $e';
+      }
+
+      if (mounted) {
+        setState(() => _error = msg);
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -51,12 +63,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               controller: _emailCtrl,
               decoration: const InputDecoration(labelText: 'E-Mail'),
               keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              textInputAction: TextInputAction.next,
             ),
             const SizedBox(height: 16),
             TextField(
               controller: _pwCtrl,
               decoration: const InputDecoration(labelText: 'Passwort'),
               obscureText: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _login(),
             ),
             if (_error != null) ...[
               const SizedBox(height: 16),
@@ -66,7 +82,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ElevatedButton(
               onPressed: _loading ? null : _login,
               child: _loading
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
                   : const Text('Einloggen'),
             ),
           ],

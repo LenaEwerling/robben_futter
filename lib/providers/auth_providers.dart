@@ -17,24 +17,40 @@ class AuthService {
   }
 
   Future<void> signOut() async {
+    // Nur signOut – recoverSession ist in den meisten Fällen nicht nötig
     await supabase.auth.signOut();
   }
 }
 
-final userRoleProvider = FutureProvider<String?>((ref) async {
-  final user = ref.watch(authProvider).currentUser;
-  if (user == null) return null;
+// ────────────────────────────────────────────────
+//          ←  Die wichtigste Verbesserung  →
+final userRoleProvider = StreamProvider.autoDispose<String?>((ref) async* {
+  // Wir hören auf jeden Auth-State-Change
+  await for (final user in ref.watch(authProvider).authStateChanges) {
+    if (user == null) {
+      yield null;
+      continue;
+    }
 
-  final response = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .maybeSingle();
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
 
-  return response?['role'] as String?;
+      final role = response?['role'] as String?;
+      yield role;
+    } catch (e) {
+      // Im Fehlerfall → null oder Fehler behandeln
+      // Hier einfach null → du kannst auch einen separaten Error-State machen
+      yield null;
+    }
+  }
 });
 
 final isAdminProvider = Provider<bool>((ref) {
   final roleAsync = ref.watch(userRoleProvider);
-  return roleAsync.value == 'admin';
+  // .valueOrNull ist sicherer als .value (vermeidet StateError bei loading/error)
+  return roleAsync.valueOrNull == 'admin';
 });
