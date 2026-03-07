@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import 'screens/login_screen.dart';
-import 'screens/start_screen.dart'; // ← angenommen, das ist deine Home/Start-Seite
-import 'providers/auth_providers.dart';
+import 'app_router.dart'; // ← neu!
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,35 +21,16 @@ class MyApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authService = ref.watch(authProvider);
+    final router = ref.watch(goRouterProvider);
 
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'RobbenFutter',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
         useMaterial3: true,
       ),
-      home: StreamBuilder<User?>(
-        stream: authService.authStateChanges,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
-
-          if (snapshot.hasData) {
-            return const StartScreen();
-          }
-
-          return const LoginScreen();
-        },
-      ),
-      // Optional: named routes definieren
-      routes: {
-        '/home': (context) => const StartScreen(),
-        // '/login': (context) => const LoginScreen(), // nicht nötig, da home schon handhabt
-      },
+      routerConfig: router,
+      // Entferne home & onGenerateRoute etc. – alles geht über router
     );
   }
 }

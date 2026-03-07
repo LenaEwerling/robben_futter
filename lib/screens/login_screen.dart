@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
 import '../providers/auth_providers.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -22,16 +24,22 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     try {
-      await ref.read(authProvider).signIn(
+      // Nur den Notifier verwenden – nicht den Service direkt aufrufen
+      await ref.read(authNotifierProvider.notifier).signIn(
         _emailCtrl.text.trim(),
         _pwCtrl.text.trim(),
       );
 
-      if (!mounted) return;
+      // Optional: kurz warten, bis der State nicht mehr loading ist
+      // (meist unnötig, aber schadet nicht bei Timing-Problemen)
+      while (ref.read(authNotifierProvider).isLoading) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
 
-      // Besser: pushReplacementNamed mit dem Root-Routen-Namen
-      // oder direkt: Navigator.pushReplacement(...)
-      Navigator.pushReplacementNamed(context, '/home');
+      // Navigation nur einmal und nur wenn erfolgreich
+      if (context.mounted) {
+        context.goNamed('home');
+      }
     } catch (e) {
       String msg;
       if (e.toString().contains('Invalid login credentials')) {
@@ -40,7 +48,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         msg = 'Login fehlgeschlagen: $e';
       }
 
-      if (mounted) {
+      if (context.mounted) {
         setState(() => _error = msg);
       }
     } finally {
@@ -93,5 +101,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _pwCtrl.dispose();
+    super.dispose();
   }
 }
