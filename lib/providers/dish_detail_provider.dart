@@ -25,7 +25,7 @@ final dishDetailProvider = FutureProvider.family<Map<String, dynamic>, String>((
 // Robuste Variante: Optionen-Gruppen + Optionen separat laden
 final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOptions>, String>((ref, dishId) async {
   try {
-    // Schritt 1: Alle Optionen-Gruppen für diesen Dish holen (inkl. Gruppen-Details)
+    // Schritt 1: Alle Optionen-Gruppen für diesen Dish holen (inkl. min/max_selections)
     final groupsResponse = await supabase
         .from('dish_option_groups')
         .select('''
@@ -37,7 +37,9 @@ final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOp
             type,
             required,
             description,
-            sort_order
+            sort_order,
+            min_selections,
+            max_selections
           )
         ''')
         .eq('dish_id', dishId)
@@ -49,7 +51,7 @@ final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOp
       final groupId = groupRow['option_group_id'] as String;
       final groupData = groupRow['option_groups'] as Map<String, dynamic>;
 
-      // Schritt 2: Alle Optionen für diese Gruppe holen
+      // Schritt 2: Alle Optionen für diese Gruppe holen (inkl. max_quantity)
       final optionsResponse = await supabase
           .from('options')
           .select('''
@@ -65,7 +67,8 @@ final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOp
             gi,
             gl,
             portion_size_g,
-            unit
+            unit,
+            max_quantity
           ''')
           .eq('group_id', groupId)
           .order('sort_order');
@@ -73,12 +76,23 @@ final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOp
       result.add(OptionGroupWithOptions(groupData, optionsResponse));
     }
 
-    // Optional: Gruppen nach sort_order sortieren (falls Supabase das nicht tut)
+    // Gruppen nach sort_order sortieren (falls Supabase das nicht tut)
     result.sort((a, b) {
       final aSort = a.group['sort_order'] as int? ?? 0;
       final bSort = b.group['sort_order'] as int? ?? 0;
       return aSort.compareTo(bSort);
     });
+
+    // Debug-Ausgabe: Welche Werte kommen wirklich an?
+    print('Geladene Gruppen für Dish $dishId:');
+    for (final g in result) {
+      print('  Gruppe: ${g.group['name']} (id: ${g.group['id']})');
+      print('    min_selections: ${g.group['min_selections']}');
+      print('    max_selections: ${g.group['max_selections']}');
+      for (final opt in g.options) {
+        print('      Option: ${opt['name']} → max_quantity: ${opt['max_quantity']}');
+      }
+    }
 
     return result;
   } catch (e, stack) {
