@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:robben_futter/screens/dish_detail_screen.dart';
+import 'package:robben_futter/screens/dishes_list.dart';
 
 import '../providers/auth_providers.dart';
 import '../providers/router_refresh_provider.dart';
@@ -71,8 +73,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/dishes',
-                name: 'dishes',
-                builder: (context, state) => TestDishesScreen(),
+                name: 'dishes-list',
+                builder: (context, state) => DishesListScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    name: 'dish-detail',
+                    builder: (context, state) {
+                      final id = state.pathParameters['id']!;
+                      return DishDetailScreen(dishId: id);
+                    },
+                  ),
+                ],
               ),
             ],
           ),
