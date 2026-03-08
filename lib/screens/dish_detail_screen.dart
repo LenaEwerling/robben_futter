@@ -1,8 +1,8 @@
-import 'dart:math';
-
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'dart:math' show min, gcd; // ← gcd für größter gemeinsamer Teiler
 
 import '../providers/auth_providers.dart' hide supabase;
 import '../providers/dish_detail_provider.dart';
@@ -63,35 +63,43 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, st) => Center(child: Text('Fehler: $err')),
         data: (dish) {
-          // Effektives Maximum für Gerichte-Menge berechnen
+          // 1. Basis-Limit vom Gericht selbst
           final dishStock = dish['stock_quantity'] as int? ?? 999999;
           final ignoreCat = dish['ignore_category_stock'] as bool? ?? false;
           final catStockRaw = dish['categories']?['stock_quantity'] as int?;
 
-          double catLimit;
-          if (catStockRaw == null) {
-            // Kategorie-Stock NULL → komplett ignorieren
-            catLimit = 999999;
-          } else {
+          double catLimit = 999999;
+          if (catStockRaw != null) {
             catLimit = ignoreCat ? 999999 : catStockRaw.toDouble();
           }
 
-          // Optionen-Limit (geringste Verfügbarkeit pro Option)
+          int dishLimit = min(dishStock, catLimit.toInt());
+
+          // 2. Limit durch ausgewählte Optionen (ggT-Logik)
           final groups = groupsAsync.value ?? [];
+          final selectedQuantities = selection.selections.entries
+              .where((entry) => entry.value is Map<String, int>)
+              .expand((entry) => (entry.value as Map<String, int>).entries)
+              .toList();
+
           int optionLimit = 999999;
           for (final groupData in groups) {
             for (final opt in groupData.options) {
-              final optStock = opt['stock_quantity'] as int? ?? 999999;
-              final neededPerPortion = 1; // später anpassbar
-              optionLimit = optionLimit < (optStock ~/ neededPerPortion)
-                  ? optionLimit
-                  : (optStock ~/ neededPerPortion);
+              final optId = opt['id'] as String;
+              final optQty = selectedQuantities.firstWhereOrNull((q) => q.key == optId)?.value ?? 0;
+              if (optQty > 0) {
+                final optStock = opt['stock_quantity'] as int? ?? 999999;
+                final neededPerPortion = optQty; // z. B. 1 Hähnchen pro Pasta
+                if (neededPerPortion > 0) {
+                  final portionsPossible = optStock ~/ neededPerPortion;
+                  optionLimit = min(optionLimit, portionsPossible);
+                }
+              }
             }
           }
 
-          final effectiveMax = [dishStock.toDouble(), catLimit, optionLimit.toDouble()]
-              .reduce((a, b) => a < b ? a : b)
-              .toInt();
+          // Endgültiges Limit = min(dishLimit, optionLimit)
+          final effectiveMax = min(dishLimit, optionLimit);
 
           final currentQty = selection.dishQuantity ?? 1;
           final displayQty = currentQty > effectiveMax ? effectiveMax : currentQty;
