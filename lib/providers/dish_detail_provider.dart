@@ -61,14 +61,14 @@ final optionGroupsForDishProvider = FutureProvider.family<List<OptionGroupWithOp
             price_adjust,
             default_selected,
             sort_order,
-            is_available,
             protein_per_100g,
             carbs_per_100g,
             gi,
             gl,
             portion_size_g,
             unit,
-            max_quantity
+            max_quantity,
+            stock_quantity
           ''')
           .eq('group_id', groupId)
           .order('sort_order');

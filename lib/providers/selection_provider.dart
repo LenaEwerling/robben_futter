@@ -1,11 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:math' show min;
+import 'package:collection/collection.dart';
 
 import 'dish_detail_provider.dart';
 
-// Modell für ausgewählte Optionen pro Gruppe
 class SelectionState {
-  final Map<String, dynamic> selections;          // Optionen wie bisher
-  final int dishQuantity;                         // ← neu: Menge des Gerichts selbst
+  final Map<String, dynamic> selections;
+  final int dishQuantity;
 
   const SelectionState({
     this.selections = const {},
@@ -23,7 +24,6 @@ class SelectionState {
   }
 }
 
-// Family-Notifier: pro dishId ein eigener State
 final selectionProvider = NotifierProvider.family<SelectionNotifier, SelectionState, String>(
   SelectionNotifier.new,
 );
@@ -35,7 +35,7 @@ class SelectionNotifier extends FamilyNotifier<SelectionState, String> {
   }
 
   void updateDishQuantity(int quantity) {
-    state = state.copyWith(dishQuantity: quantity.clamp(1, 20)); // z. B. max 20, anpassbar
+    state = state.copyWith(dishQuantity: quantity.clamp(1, 999999));
   }
 
   void selectSingle(String groupId, String optionId) {
@@ -62,10 +62,35 @@ class SelectionNotifier extends FamilyNotifier<SelectionState, String> {
   }
 
   void updateQuantity(String groupId, String optionId, int quantity) {
+    final groupsAsync = ref.read(optionGroupsForDishProvider(arg));
+    final groups = groupsAsync.valueOrNull ?? [];
+
+    final groupData = groups.firstWhereOrNull((g) => g.group['id'] == groupId);
+    if (groupData == null) {
+      print('Gruppe nicht gefunden: $groupId');
+      return;
+    }
+
+    final opt = groupData.options.firstWhereOrNull((o) => o['id'] == optionId);
+    if (opt == null) {
+      print('Option nicht gefunden: $optionId');
+      return;
+    }
+
+    final maxQty = opt['max_quantity'] as int? ?? 999999;
+    final stockQty = opt['stock_quantity'] as int? ?? 999999;
+
+    final effectiveMax = min(maxQty, stockQty);
+
+    final newQty = quantity.clamp(0, effectiveMax);
+
+    print('updateQuantity: $optionId → requested=$quantity, effectiveMax=$effectiveMax, newQty=$newQty');
+
     final current = state.selections[groupId] as Map<String, int>? ?? {};
     final updated = Map<String, int>.from(current);
-    if (quantity > 0) {
-      updated[optionId] = quantity;
+
+    if (newQty > 0) {
+      updated[optionId] = newQty;
     } else {
       updated.remove(optionId);
     }
@@ -111,20 +136,20 @@ class SelectionNotifier extends FamilyNotifier<SelectionState, String> {
       count = qtyMap.values.fold(0, (sum, q) => sum + q);
     }
 
-    // Mindestanzahl prüfen
     if (count < minSel) return false;
-
-    // Maximalanzahl prüfen (wenn gesetzt)
     if (maxSel != null && count > maxSel) return false;
 
-    // Bei quantity: einzelne Optionen dürfen max_quantity nicht überschreiten
     if (type == 'quantity') {
       final qtyMap = selection as Map<String, int>? ?? {};
       for (final opt in options) {
         final optId = opt['id'] as String;
         final maxQty = opt['max_quantity'] as int?;
+        final stockQty = opt['stock_quantity'] as int?;
         final currentQty = qtyMap[optId] ?? 0;
-        if (maxQty != null && currentQty > maxQty) {
+
+        final effectiveMax = min(maxQty ?? 999999, stockQty ?? 999999);
+        if (currentQty > effectiveMax) {
+          print('Ungültig: $optId qty=$currentQty > max=$effectiveMax');
           return false;
         }
       }
@@ -133,14 +158,9 @@ class SelectionNotifier extends FamilyNotifier<SelectionState, String> {
     return true;
   }
 
-  /// Prüft ALLE Gruppen auf Gültigkeit
   bool areAllGroupsValid(List<OptionGroupWithOptions> groups) {
     for (final g in groups) {
-      if (!isGroupValid(
-        g.group['id'] as String,
-        g.group,
-        g.options,
-      )) {
+      if (!isGroupValid(g.group['id'] as String, g.group, g.options)) {
         return false;
       }
     }

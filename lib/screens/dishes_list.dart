@@ -4,19 +4,19 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../main.dart'; // supabase client
-import 'dish_detail_screen.dart'; // falls noch nicht importiert
+import 'dish_detail_screen.dart';
 
 final dishesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return await supabase
       .from('dishes')
-      .select('*, categories!inner(name)')
+      .select('*, categories!inner(name, stock_quantity)')
       .order('name');
 });
 
 final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   return await supabase
       .from('categories')
-      .select('id, name')
+      .select('id, name, stock_quantity')
       .order('name');
 });
 
@@ -40,20 +40,16 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
     return Scaffold(
       body: Column(
         children: [
-          // Filter-Leiste
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Suchfeld (ganze Breite)
                 TextField(
                   decoration: InputDecoration(
                     hintText: 'Gericht suchen...',
                     prefixIcon: const Icon(Icons.search),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     filled: true,
                     fillColor: Colors.grey[200],
                   ),
@@ -61,7 +57,6 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Checkbox darunter
                 CheckboxListTile(
                   title: const Text('Auch nicht verfügbare Gerichte anzeigen'),
                   value: _showUnavailable,
@@ -71,36 +66,29 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                 ),
                 const SizedBox(height: 12),
 
-                // Kategorie-Chips (horizontal scrollbar)
                 categoriesAsync.when(
-                  data: (categories) {
-                    return SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          FilterChip(
-                            label: const Text('Alle'),
-                            selected: _selectedCategory == null,
-                            onSelected: (_) => setState(() => _selectedCategory = null),
+                  data: (categories) => SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        FilterChip(
+                          label: const Text('Alle'),
+                          selected: _selectedCategory == null,
+                          onSelected: (_) => setState(() => _selectedCategory = null),
+                        ),
+                        ...categories.map((cat) => Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: FilterChip(
+                            label: Text(cat['name']),
+                            selected: _selectedCategory == cat['id'].toString(),
+                            onSelected: (selected) => setState(() {
+                              _selectedCategory = selected ? cat['id'].toString() : null;
+                            }),
                           ),
-                          ...categories.map((cat) {
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 8),
-                              child: FilterChip(
-                                label: Text(cat['name']),
-                                selected: _selectedCategory == cat['id'].toString(),
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _selectedCategory = selected ? cat['id'].toString() : null;
-                                  });
-                                },
-                              ),
-                            );
-                          }),
-                        ],
-                      ),
-                    );
-                  },
+                        )),
+                      ],
+                    ),
+                  ),
                   loading: () => const CircularProgressIndicator(),
                   error: (e, _) => Text('Kategorien-Fehler: $e'),
                 ),
@@ -108,18 +96,26 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
             ),
           ),
 
-          // Liste
           Expanded(
             child: dishesAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (err, st) => Center(child: Text('Fehler beim Laden: $err')),
               data: (allDishes) {
-                // Filter anwenden
                 var filtered = allDishes.where((dish) {
                   final nameMatch = (dish['name'] as String).toLowerCase().contains(_searchQuery);
                   final categoryMatch = _selectedCategory == null ||
                       dish['category_id'].toString() == _selectedCategory;
-                  final availabilityMatch = _showUnavailable || (dish['is_available'] == true);
+
+                  final dishStock = dish['stock_quantity'] as int? ?? 0;
+                  final ignoreCat = dish['ignore_category_stock'] as bool? ?? false;
+                  final catStockRaw = dish['categories']?['stock_quantity'] as int?;
+
+                  bool catStockAllows = true;
+                  if (catStockRaw != null) {
+                    catStockAllows = ignoreCat || catStockRaw > 0;
+                  }
+
+                  final availabilityMatch = _showUnavailable || (dishStock > 0 && catStockAllows);
 
                   return nameMatch && categoryMatch && availabilityMatch;
                 }).toList();
@@ -128,7 +124,6 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                   return const Center(child: Text('Keine Gerichte gefunden'));
                 }
 
-                // Nach Kategorie gruppieren
                 final Map<String, List<Map<String, dynamic>>> grouped = {};
                 for (var dish in filtered) {
                   final catName = dish['categories']['name'] as String? ?? 'Ohne Kategorie';
@@ -142,27 +137,31 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                     final dishesInCat = grouped[catName]!;
 
                     return ExpansionTile(
-                      title: Text(
-                        catName,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                      ),
+                      title: Text(catName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                       initiallyExpanded: true,
                       children: dishesInCat.map((dish) {
+                        final dishStock = dish['stock_quantity'] as int? ?? 0;
+                        final ignoreCat = dish['ignore_category_stock'] as bool? ?? false;
+                        final catStockRaw = dish['categories']?['stock_quantity'] as int?;
+                        final catStockAllows = catStockRaw == null || ignoreCat || catStockRaw > 0;
+                        final outOfStock = !(dishStock > 0 && catStockAllows);
+
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           child: InkWell(
-                            onTap: () {
-                              context.goNamed(
-                                'dish-detail',
-                                pathParameters: {'id': dish['id'].toString()},
-                              );
-                            },
+                            onTap: outOfStock
+                                ? () => ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Aktuell nicht verfügbar')),
+                            )
+                                : () => context.goNamed(
+                              'dish-detail',
+                              pathParameters: {'id': dish['id'].toString()},
+                            ),
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Foto / Placeholder
                                   ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
                                     child: dish['image_url'] != null
@@ -177,17 +176,13 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                                   ),
                                   const SizedBox(width: 16),
 
-                                  // Infos
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           dish['name'],
-                                          style: const TextStyle(
-                                            fontSize: 18,
-                                            fontWeight: FontWeight.bold,
-                                          ),
+                                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                                         ),
                                         const SizedBox(height: 4),
                                         Text(
@@ -203,12 +198,11 @@ class _DishesListScreenState extends ConsumerState<DishesListScreen> {
                                             const SizedBox(width: 4),
                                             Text('${dish['prep_time_min']} Min.'),
                                             const SizedBox(width: 16),
-                                            if (!(dish['is_available'] == true))
+                                            if (outOfStock)
                                               const Chip(
                                                 label: Text('Nicht verfügbar'),
                                                 backgroundColor: Colors.red,
                                                 labelStyle: TextStyle(color: Colors.white),
-                                                padding: EdgeInsets.zero,
                                               ),
                                           ],
                                         ),
