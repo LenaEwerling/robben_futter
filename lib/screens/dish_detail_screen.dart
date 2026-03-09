@@ -2,7 +2,7 @@ import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'dart:math' show min, gcd; // ← gcd für größter gemeinsamer Teiler
+import 'dart:math' show min;
 
 import '../providers/auth_providers.dart' hide supabase;
 import '../providers/dish_detail_provider.dart';
@@ -19,10 +19,11 @@ class DishDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
+  bool _quantityWasAutoReduced = false;
+
   @override
   void initState() {
     super.initState();
-    // Initiale Auswahl setzen (bei min_selections > 0 erste Option wählen)
     Future.microtask(() {
       final groups = ref.read(optionGroupsForDishProvider(widget.dishId)).value ?? [];
       final notifier = ref.read(selectionProvider(widget.dishId).notifier);
@@ -63,49 +64,49 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, st) => Center(child: Text('Fehler: $err')),
         data: (dish) {
-          // 1. Basis-Limit vom Gericht selbst
+          // Basis-Limit vom Gericht selbst
           final dishStock = dish['stock_quantity'] as int? ?? 999999;
           final ignoreCat = dish['ignore_category_stock'] as bool? ?? false;
           final catStockRaw = dish['categories']?['stock_quantity'] as int?;
 
-          double catLimit = 999999;
-          if (catStockRaw != null) {
-            catLimit = ignoreCat ? 999999 : catStockRaw.toDouble();
+          int currentLimit = dishStock;
+
+          if (catStockRaw != null && !ignoreCat) {
+            currentLimit = min(currentLimit, catStockRaw);
           }
 
-          int dishLimit = min(dishStock, catLimit.toInt());
-
-          // 2. Limit durch ausgewählte Optionen (ggT-Logik)
+          // Optionen-Limit nur aus ausgewählten Optionen (min über portionsPossible)
           final groups = groupsAsync.value ?? [];
+          int optionLimit = 999999;
+
           final selectedQuantities = selection.selections.entries
               .where((entry) => entry.value is Map<String, int>)
               .expand((entry) => (entry.value as Map<String, int>).entries)
               .toList();
 
-          int optionLimit = 999999;
           for (final groupData in groups) {
             for (final opt in groupData.options) {
               final optId = opt['id'] as String;
-              final optQty = selectedQuantities.firstWhereOrNull((q) => q.key == optId)?.value ?? 0;
-              if (optQty > 0) {
-                final optStock = opt['stock_quantity'] as int? ?? 999999;
-                final neededPerPortion = optQty; // z. B. 1 Hähnchen pro Pasta
-                if (neededPerPortion > 0) {
-                  final portionsPossible = optStock ~/ neededPerPortion;
+              final optQtyEntry = selectedQuantities.firstWhereOrNull((q) => q.key == optId);
+              if (optQtyEntry != null) {
+                final optQty = optQtyEntry.value;
+                if (optQty > 0) {
+                  final optStock = opt['stock_quantity'] as int? ?? 999999;
+                  final portionsPossible = optStock ~/ optQty;
                   optionLimit = min(optionLimit, portionsPossible);
                 }
               }
             }
           }
 
-          // Endgültiges Limit = min(dishLimit, optionLimit)
-          final effectiveMax = min(dishLimit, optionLimit);
+          final effectiveMax = min(currentLimit, optionLimit);
 
           final currentQty = selection.dishQuantity ?? 1;
           final displayQty = currentQty > effectiveMax ? effectiveMax : currentQty;
 
-          // Automatische Anpassung bei Überschreitung
+          // Automatische Anpassung + Flag setzen
           if (currentQty > effectiveMax) {
+            _quantityWasAutoReduced = true;
             Future.microtask(() {
               ref.read(selectionProvider(widget.dishId).notifier)
                   .updateDishQuantity(effectiveMax);
@@ -115,7 +116,6 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Gericht-Info
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -132,7 +132,6 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
 
               const SizedBox(height: 24),
 
-              // Mengen-Auswahl für das Gericht selbst
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -147,8 +146,11 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                       IconButton(
                         icon: const Icon(Icons.remove_circle_outline),
                         onPressed: displayQty > 1
-                            ? () => ref.read(selectionProvider(widget.dishId).notifier)
-                            .updateDishQuantity(displayQty - 1)
+                            ? () {
+                          setState(() => _quantityWasAutoReduced = false);
+                          ref.read(selectionProvider(widget.dishId).notifier)
+                              .updateDishQuantity(displayQty - 1);
+                        }
                             : null,
                       ),
                       SizedBox(
@@ -159,7 +161,7 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                             style: TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                              color: currentQty > effectiveMax ? Colors.red : null,
+                              color: _quantityWasAutoReduced ? Colors.red : null,
                             ),
                           ),
                         ),
@@ -170,8 +172,11 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                           color: displayQty < effectiveMax ? null : Colors.grey,
                         ),
                         onPressed: displayQty < effectiveMax
-                            ? () => ref.read(selectionProvider(widget.dishId).notifier)
-                            .updateDishQuantity(displayQty + 1)
+                            ? () {
+                          setState(() => _quantityWasAutoReduced = false);
+                          ref.read(selectionProvider(widget.dishId).notifier)
+                              .updateDishQuantity(displayQty + 1);
+                        }
                             : null,
                       ),
                       const SizedBox(width: 12),
@@ -179,7 +184,7 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                         Text(
                           '(max. $effectiveMax)',
                           style: TextStyle(
-                            color: currentQty > effectiveMax ? Colors.red : Colors.grey[600],
+                            color: _quantityWasAutoReduced ? Colors.red : Colors.grey[600],
                           ),
                         ),
                     ],
@@ -189,7 +194,6 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
 
               const SizedBox(height: 24),
 
-              // Optionen-Gruppen
               groupsAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (err, st) => Text('Optionen-Fehler: $err'),
@@ -302,12 +306,10 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                                 final quantities = currentSelection as Map<String, int>? ?? {};
                                 final qty = quantities[optId] ?? 0;
 
-                                // HARTE GRENZE: min(max_quantity, stock_quantity)
                                 final maxFromConfig = maxQty ?? 999999;
                                 final maxFromStock = optStock;
                                 final effectiveOptionMax = min(maxFromConfig, maxFromStock);
 
-                                // Kann noch erhöht werden?
                                 final canIncrease = qty < effectiveOptionMax;
 
                                 control = Row(
