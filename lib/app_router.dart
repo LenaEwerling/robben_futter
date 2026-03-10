@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:robben_futter/screens/dish_detail_screen.dart';
-import 'package:robben_futter/screens/dishes_list.dart';
+import 'package:robben_futter/providers/cart_provider.dart';
 
 import '../providers/auth_providers.dart';
 import '../providers/router_refresh_provider.dart';
 import '../screens/login_screen.dart';
 import '../screens/start_screen.dart';
+import '../screens/dishes_list.dart';
 import '../screens/dish_detail_screen.dart';
-import '../screens/test_dishes_screen.dart';
+import '../screens/cart_screen.dart'; // ← dein Warenkorb-Screen
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -24,29 +24,25 @@ final goRouterProvider = Provider<GoRouter>((ref) {
 
       final currentPath = state.uri.path;
 
-      // Während Loading → kein Redirect (verhindert Loop während signIn)
       if (authState.isLoading) {
         return null;
       }
 
       final user = authState.valueOrNull;
-      final isLoggedIn = user != null && user.id.isNotEmpty; // extra sicher
+      final isLoggedIn = user != null && user.id.isNotEmpty;
 
       print('Redirect check: path=$currentPath, isLoggedIn=$isLoggedIn, user=${user?.email}');
 
-      // Nicht eingeloggt und nicht schon auf login → zu login
       if (!isLoggedIn && currentPath != '/login') {
         print('→ Redirect to /login (not logged in)');
         return '/login';
       }
 
-      // Eingeloggt und auf login → zu home
       if (isLoggedIn && currentPath == '/login') {
         print('→ Redirect to / (logged in)');
         return '/';
       }
 
-      // Alles andere: kein Redirect
       return null;
     },
 
@@ -76,7 +72,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/dishes',
                 name: 'dishes-list',
-                builder: (context, state) => DishesListScreen(),
+                builder: (context, state) => const DishesListScreen(),
                 routes: [
                   GoRoute(
                     path: ':id',
@@ -87,6 +83,15 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     },
                   ),
                 ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/cart',
+                name: 'cart',
+                builder: (context, state) => const CartScreen(),
               ),
             ],
           ),
@@ -103,20 +108,23 @@ class _ShellWithBottomNav extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cartAsync = ref.watch(cartProvider);
+    final cartItemCount = cartAsync.valueOrNull?.length ?? 0;
+
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(100), // ← Gesamthöhe der AppBar erhöhen (80–120 px)
+        preferredSize: const Size.fromHeight(100),
         child: AppBar(
-          toolbarHeight: 100, // ← Höhe der Toolbar selbst
+          toolbarHeight: 100,
           title: SvgPicture.asset(
             'assets/Logo.svg',
-            height: 80, // dein gewünschtes Logo-Höhe
+            height: 80,
             fit: BoxFit.contain,
           ),
           centerTitle: true,
-          titleSpacing: 0, // entfernt unnötigen Abstand links
-          elevation: 0, // optional: flacher Look
-          backgroundColor: Colors.white, // oder dein Theme-Farbe
+          titleSpacing: 0,
+          elevation: 0,
+          backgroundColor: Colors.white,
           actions: [
             IconButton(
               icon: const Icon(Icons.logout),
@@ -135,9 +143,23 @@ class _ShellWithBottomNav extends ConsumerWidget {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: navigationShell.currentIndex,
         onTap: (index) => navigationShell.goBranch(index),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.restaurant_menu), label: 'Gerichte'),
+        items: [
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          const BottomNavigationBarItem(
+            icon: Icon(Icons.restaurant_menu),
+            label: 'Gerichte',
+          ),
+          BottomNavigationBarItem(
+            icon: Badge(
+              isLabelVisible: cartItemCount > 0,
+              label: Text('$cartItemCount'),
+              child: const Icon(Icons.shopping_cart),
+            ),
+            label: 'Warenkorb',
+          ),
         ],
       ),
     );

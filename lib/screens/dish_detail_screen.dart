@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'dart:math' show min;
 
 import '../providers/auth_providers.dart' hide supabase;
+import '../providers/cart_provider.dart';
 import '../providers/dish_detail_provider.dart';
 import '../providers/selection_provider.dart';
 import '../main.dart'; // supabase client
@@ -394,8 +395,8 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
               const SizedBox(height: 40),
 
               FilledButton.icon(
-                icon: const Icon(Icons.shopping_cart_checkout),
-                label: const Text('Bestellen'),
+                icon: const Icon(Icons.add_shopping_cart),
+                label: const Text('In Warenkorb'),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -416,75 +417,15 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                   }
 
                   try {
-                    final user = ref.read(authNotifierProvider).value;
-                    if (user == null) throw Exception('Nicht eingeloggt');
-
-                    final orderResponse = await supabase
-                        .from('orders')
-                        .insert({
-                      'user_id': user.id,
-                      'status': 'new',
-                      'notes': 'Bestellt über App',
-                    })
-                        .select('id')
-                        .single();
-
-                    final orderId = orderResponse['id'] as String;
-
-                    final orderItemResponse = await supabase
-                        .from('order_items')
-                        .insert({
-                      'order_id': orderId,
-                      'dish_id': widget.dishId,
-                      'quantity': selection.dishQuantity ?? 1,
-                    })
-                        .select('id')
-                        .single();
-
-                    final orderItemId = orderItemResponse['id'] as String;
-
-                    final selections = notifier.state.selections;
-                    final List<Map<String, dynamic>> optionInserts = [];
-
-                    for (final entry in selections.entries) {
-                      final groupId = entry.key;
-                      final selectionValue = entry.value;
-
-                      if (selectionValue is String) {
-                        optionInserts.add({
-                          'order_item_id': orderItemId,
-                          'option_id': selectionValue,
-                          'quantity': 1,
-                          'selected': true,
-                        });
-                      } else if (selectionValue is Set<String>) {
-                        for (final optId in selectionValue) {
-                          optionInserts.add({
-                            'order_item_id': orderItemId,
-                            'option_id': optId,
-                            'quantity': 1,
-                            'selected': true,
-                          });
-                        }
-                      } else if (selectionValue is Map<String, int>) {
-                        for (final optEntry in selectionValue.entries) {
-                          optionInserts.add({
-                            'order_item_id': orderItemId,
-                            'option_id': optEntry.key,
-                            'quantity': optEntry.value,
-                            'selected': optEntry.value > 0,
-                          });
-                        }
-                      }
-                    }
-
-                    if (optionInserts.isNotEmpty) {
-                      await supabase.from('order_item_options').insert(optionInserts);
-                    }
+                    await ref.read(cartProvider.notifier).addToCart(
+                      widget.dishId,
+                      selection.dishQuantity ?? 1,
+                      selection.selections,
+                    );
 
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('Bestellung erfolgreich gespeichert!'),
+                        content: Text('Zum Warenkorb hinzugefügt!'),
                         backgroundColor: Colors.green,
                       ),
                     );
@@ -492,11 +433,10 @@ class _DishDetailScreenState extends ConsumerState<DishDetailScreen> {
                     notifier.state = const SelectionState();
                     context.goNamed('dishes-list');
 
-                  } catch (e, stack) {
-                    print('Bestell-Fehler: $e\n$stack');
+                  } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text('Fehler beim Speichern: $e'),
+                        content: Text('Fehler: $e'),
                         backgroundColor: Colors.red,
                       ),
                     );
