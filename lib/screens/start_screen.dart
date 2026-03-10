@@ -17,7 +17,7 @@ class StartScreen extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           const Text(
-            'Willkommen bei RobbenFutter!',
+            'Willkommen bei SealFood!',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),

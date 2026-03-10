@@ -45,13 +45,13 @@ class _TestDishesScreenState extends State<TestDishesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('RobbenFutter – Test')),
+      appBar: AppBar(title: const Text('SealFood – Test')),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Willkommen bei RobbenFutter!', style: Theme.of(context).textTheme.headlineMedium),
+            Text('Willkommen bei SealFood!', style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 20),
             Text(_status, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),

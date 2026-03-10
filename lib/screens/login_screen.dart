@@ -67,6 +67,12 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            Image.asset(
+              'assets/Logo.png',
+              height: 300, // oder 150 für mehr Präsenz
+              fit: BoxFit.contain,
+            ),
+            const SizedBox(height: 32),
             TextField(
               controller: _emailCtrl,
               decoration: const InputDecoration(labelText: 'E-Mail'),

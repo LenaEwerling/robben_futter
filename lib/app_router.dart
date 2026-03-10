@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:robben_futter/screens/dish_detail_screen.dart';
@@ -8,6 +9,7 @@ import '../providers/auth_providers.dart';
 import '../providers/router_refresh_provider.dart';
 import '../screens/login_screen.dart';
 import '../screens/start_screen.dart';
+import '../screens/dish_detail_screen.dart';
 import '../screens/test_dishes_screen.dart';
 
 final goRouterProvider = Provider<GoRouter>((ref) {
@@ -102,21 +104,32 @@ class _ShellWithBottomNav extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('RobbenFutter'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Ausloggen',
-            onPressed: () async {
-              await ref.read(authNotifierProvider.notifier).signOut();
-              // redirect triggert automatisch → kein manuelles pushReplacement nötig
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Erfolgreich ausgeloggt')),
-              );
-            },
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(100), // ← Gesamthöhe der AppBar erhöhen (80–120 px)
+        child: AppBar(
+          toolbarHeight: 100, // ← Höhe der Toolbar selbst
+          title: SvgPicture.asset(
+            'assets/Logo.svg',
+            height: 80, // dein gewünschtes Logo-Höhe
+            fit: BoxFit.contain,
           ),
-        ],
+          centerTitle: true,
+          titleSpacing: 0, // entfernt unnötigen Abstand links
+          elevation: 0, // optional: flacher Look
+          backgroundColor: Colors.white, // oder dein Theme-Farbe
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Ausloggen',
+              onPressed: () async {
+                await ref.read(authNotifierProvider.notifier).signOut();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Erfolgreich ausgeloggt')),
+                );
+              },
+            ),
+          ],
+        ),
       ),
       body: navigationShell,
       bottomNavigationBar: BottomNavigationBar(
