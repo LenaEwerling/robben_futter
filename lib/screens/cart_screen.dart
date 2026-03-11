@@ -67,95 +67,116 @@ class CartScreen extends ConsumerWidget {
             return const Center(child: Text('Warenkorb ist leer'));
           }
 
-          return ListView.builder(
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                child: ExpansionTile(
-                  title: Text(item.dishName),
-                  subtitle: Text(item.dishDescription),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove),
-                        onPressed: () {
-                          if (item.quantity > 1) {
-                            ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity - 1);
-                          } else {
-                            ref.read(cartProvider.notifier).removeFromCart(item.id);
-                          }
-                        },
-                      ),
-                      Text('${item.quantity}'),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: () => ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity + 1),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete),
-                        onPressed: () => ref.read(cartProvider.notifier).removeFromCart(item.id),
-                      ),
-                    ],
-                  ),
-                  children: [
-                    if (item.selectedOptions.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: FutureBuilder<Map<String, String>>(
-                          future: _loadOptionNames(item.selectedOptions),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const Text('Lade Optionen...');
-                            }
-                            if (snapshot.hasError) {
-                              return Text('Fehler beim Laden der Optionen: ${snapshot.error}');
-                            }
+          return FutureBuilder<Map<String, String>>(
+            future: _loadOptionNames(items.fold<Map<String, dynamic>>(
+              {},
+                  (map, item) => {...map, ...item.selectedOptions},
+            )),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Fehler beim Laden der Optionen: ${snapshot.error}'));
+              }
 
-                            final nameMap = snapshot.data ?? {};
+              final nameMap = snapshot.data ?? {};
 
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start, // ← linksbündig!
-                              children: [
-                                const Text('Gewählte Optionen:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ...item.selectedOptions.entries.map((entry) {
-                                  final groupId = entry.key;
-                                  final groupName = nameMap[groupId] ?? groupId;
-                                  final value = entry.value;
-
-                                  if (value is Set<String>) {
-                                    final names = value.map((id) => nameMap[id] ?? id).join(', ');
-                                    return Padding(
-                                      padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                      child: Text('$groupName: $names'),
-                                    );
-                                  } else if (value is Map<String, int>) {
-                                    final names = value.entries.map((e) {
-                                      final name = nameMap[e.key] ?? e.key;
-                                      return '$name (${e.value}x)';
-                                    }).join(', ');
-                                    return Padding(
-                                      padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                      child: Text('$groupName: $names'),
-                                    );
-                                  } else if (value is String) {
-                                    final name = nameMap[value] ?? value;
-                                    return Padding(
-                                      padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                      child: Text('$groupName: $name'),
-                                    );
-                                  }
-                                  return const SizedBox.shrink();
-                                }).toList(),
-                              ],
-                            );
-                          },
-                        ),
+              return ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return Card(
+                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    child: ExpansionTile(
+                      title: Text(item.dishName),
+                      subtitle: Text(item.dishDescription),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove),
+                            onPressed: () {
+                              if (item.quantity > 1) {
+                                ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity - 1);
+                              } else {
+                                ref.read(cartProvider.notifier).removeFromCart(item.id);
+                              }
+                            },
+                          ),
+                          Text('${item.quantity}'),
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: () => ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity + 1),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => ref.read(cartProvider.notifier).removeFromCart(item.id),
+                          ),
+                        ],
                       ),
-                  ],
-                ),
+                      children: [
+                        if (item.selectedOptions.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            child: FutureBuilder<Map<String, String>>(
+                              future: _loadOptionNames(item.selectedOptions),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Text('Lade Optionen...');
+                                }
+                                if (snapshot.hasError) {
+                                  return Text('Fehler: ${snapshot.error}');
+                                }
+
+                                final nameMap = snapshot.data ?? {};
+
+                                return Align(
+                                  alignment: Alignment.centerLeft, // ← erzwingt linksbündig
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Gewählte Optionen:', style: TextStyle(fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 8),
+                                      ...item.selectedOptions.entries.map((entry) {
+                                        final groupId = entry.key;
+                                        final groupName = nameMap[groupId] ?? groupId;
+                                        final value = entry.value;
+
+                                        if (value is Set<String>) {
+                                          final names = value.map((id) => nameMap[id] ?? id).join(', ');
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+                                            child: Text('$groupName: $names'),
+                                          );
+                                        } else if (value is Map<String, int>) {
+                                          final names = value.entries.map((e) {
+                                            final name = nameMap[e.key] ?? e.key;
+                                            return '$name (${e.value}x)';
+                                          }).join(', ');
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+                                            child: Text('$groupName: $names'),
+                                          );
+                                        } else if (value is String) {
+                                          final name = nameMap[value] ?? value;
+                                          return Padding(
+                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
+                                            child: Text('$groupName: $name'),
+                                          );
+                                        }
+                                        return const SizedBox.shrink();
+                                      }).toList(),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
               );
             },
           );
