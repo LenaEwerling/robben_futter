@@ -116,8 +116,8 @@ class _ShellWithBottomNav extends ConsumerWidget {
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
           toolbarHeight: 100,
-          title: SvgPicture.asset(
-            'assets/Logo.svg',
+          title: Image.asset(
+            'assets/Logo.png',
             height: 80,
             fit: BoxFit.contain,
           ),

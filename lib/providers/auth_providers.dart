@@ -1,10 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-final supabase = Supabase.instance.client;
+import '../main.dart'; // ← hier kommt der globale supabase-Client her
 
 // ────────────────────────────────────────────────
-// AuthService bleibt fast gleich (nur als Client-Hilfe)
+// AuthService (nur noch Wrapper – kein Init mehr)
 class AuthService {
   User? get currentUser => supabase.auth.currentUser;
 
@@ -22,17 +22,15 @@ class AuthService {
 final authServiceProvider = Provider<AuthService>((ref) => AuthService());
 
 // ────────────────────────────────────────────────
-// Zentraler Auth-Notifier (AsyncNotifier → loading/error/data)
+// Zentraler Auth-Notifier
 final authNotifierProvider = AsyncNotifierProvider<AuthNotifier, User?>(() {
   return AuthNotifier();
 });
 
 class AuthNotifier extends AsyncNotifier<User?> {
-  // Kein Konstruktor nötig – ref ist automatisch verfügbar!
-
   @override
   Future<User?> build() async {
-    // Initial: aktuellen User prüfen (z. B. bei App-Start, wenn Session noch gültig)
+    // Initial: aktuellen User prüfen (Session prüfen)
     return ref.read(authServiceProvider).currentUser;
   }
 
@@ -40,10 +38,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
     state = const AsyncLoading();
 
     try {
-      // Supabase-Login ausführen
       await ref.read(authServiceProvider).signIn(email, password);
-
-      // WICHTIG: User NACH dem Login abrufen – Session wird asynchron aktualisiert
       final currentUser = ref.read(authServiceProvider).currentUser;
 
       if (currentUser == null) {
@@ -68,7 +63,7 @@ class AuthNotifier extends AsyncNotifier<User?> {
 }
 
 // ────────────────────────────────────────────────
-// userRoleProvider bleibt StreamProvider.autoDispose (reagiert auf auth changes)
+// userRoleProvider – Stream bleibt
 final userRoleProvider = StreamProvider.autoDispose<String?>((ref) async* {
   await for (final user in ref.watch(authServiceProvider).authStateChanges) {
     if (user == null) {
