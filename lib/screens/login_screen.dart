@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // ← falls du SVG nutzt, sonst Image.asset
 
 import '../providers/auth_providers.dart';
 
@@ -31,7 +32,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       );
 
       // Optional: kurz warten, bis der State nicht mehr loading ist
-      // (meist unnötig, aber schadet nicht bei Timing-Problemen)
       while (ref.read(authNotifierProvider).isLoading) {
         await Future.delayed(const Duration(milliseconds: 50));
       }
@@ -60,50 +60,59 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
-      body: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Image.asset(
-              'assets/Logo.png',
-              height: 300, // oder 150 für mehr Präsenz
-              fit: BoxFit.contain,
-            ),
-            const SizedBox(height: 32),
-            TextField(
-              controller: _emailCtrl,
-              decoration: const InputDecoration(labelText: 'E-Mail'),
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _pwCtrl,
-              decoration: const InputDecoration(labelText: 'Passwort'),
-              obscureText: true,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _login(),
-            ),
-            if (_error != null) ...[
+      resizeToAvoidBottomInset: true, // ← Tastatur schiebt Inhalt hoch
+      body: SafeArea(
+        child: SingleChildScrollView(
+          reverse: true, // ← Scrollt nach unten, wenn Tastatur kommt
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeInOut,
+                height: keyboardHeight > 0 ? 150 : 300, // ← Logo schrumpft bei Tastatur
+                child: Image.asset(  // ← oder Image.asset('assets/Logo.png', ...)
+                  'assets/Logo.png',
+                  fit: BoxFit.contain,
+                ),
+              ),
+              const SizedBox(height: 32),
+              TextField(
+                controller: _emailCtrl,
+                decoration: const InputDecoration(labelText: 'E-Mail'),
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                textInputAction: TextInputAction.next,
+              ),
               const SizedBox(height: 16),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              TextField(
+                controller: _pwCtrl,
+                decoration: const InputDecoration(labelText: 'Passwort'),
+                obscureText: true,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _login(),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: _loading ? null : _login,
+                child: _loading
+                    ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                    : const Text('Einloggen'),
+              ),
             ],
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _loading ? null : _login,
-              child: _loading
-                  ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-                  : const Text('Einloggen'),
-            ),
-          ],
+          ),
         ),
       ),
     );
