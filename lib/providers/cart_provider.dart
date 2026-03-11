@@ -8,7 +8,7 @@ class CartItem {
   final String id;
   final String dishId;
   final int quantity;
-  final Map<String, dynamic> selectedOptions; // jetzt mit Namen statt IDs
+  final Map<String, dynamic> selectedOptions; // jetzt mit Namen
   final DateTime createdAt;
   final String dishName;
   final String dishDescription;
@@ -23,55 +23,13 @@ class CartItem {
     required this.dishDescription,
   });
 
-  static Future<CartItem> fromJson(Map<String, dynamic> json) async {
+  factory CartItem.fromJson(Map<String, dynamic> json) {
     final dish = json['dishes'] as Map<String, dynamic>? ?? {};
-    final rawOptions = json['selected_options'] as Map<String, dynamic>? ?? {};
-
-    // Option-Namen nachladen
-    final resolvedOptions = <String, dynamic>{};
-
-    for (final entry in rawOptions.entries) {
-      final groupName = entry.key;
-      final value = entry.value;
-
-      if (value is List || value is Set) {
-        final optionIds = (value as Iterable).cast<String>().toList();
-        if (optionIds.isEmpty) continue;
-
-        final optionsResponse = await supabase
-            .from('options')
-            .select('id, name')
-            .inFilter('id', optionIds);
-
-        final nameMap = {for (final o in optionsResponse) o['id'] as String: o['name'] as String};
-
-        resolvedOptions[groupName] = optionIds.map((id) => nameMap[id] ?? id).toList();
-      } else if (value is Map) {
-        // Quantity: {optId: qty}
-        final qtyMap = value as Map<String, dynamic>;
-        final optionIds = qtyMap.keys.toList();
-
-        final optionsResponse = await supabase
-            .from('options')
-            .select('id, name')
-            .inFilter('id', optionIds);
-
-        final nameMap = {for (final o in optionsResponse) o['id'] as String: o['name'] as String};
-
-        resolvedOptions[groupName] = qtyMap.map((id, qty) => MapEntry(
-          nameMap[id] ?? id,
-          qty,
-        ));
-      } else {
-        resolvedOptions[groupName] = value;
-      }
-    }
-
     return CartItem(
       id: json['id'],
       dishId: json['dish_id'],
       quantity: json['quantity'],
-      selectedOptions: resolvedOptions,
+      selectedOptions: json['selected_options'] ?? {},
       createdAt: DateTime.parse(json['created_at']),
       dishName: dish['name'] ?? 'Unbekanntes Gericht',
       dishDescription: dish['description'] ?? '',
