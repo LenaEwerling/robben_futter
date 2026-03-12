@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,9 +39,6 @@ Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOption
     optionNameMap = {for (final o in optionsResponse) o['id'] as String: o['name'] as String};
   }
 
-  print('Group-Namen: $groupNameMap');
-  print('Option-Namen: $optionNameMap');
-
   return {
     ...groupNameMap,
     ...optionNameMap,
@@ -57,10 +56,30 @@ class _CartScreenState extends ConsumerState<CartScreen> {
   // Lokaler State für Mengen – verhindert Flackern
   late Map<String, int> _localQuantities;
 
+  // Debounce-Timer – speichert nach 800 ms ohne weitere Änderung
+  Timer? _debounceTimer;
+
   @override
   void initState() {
     super.initState();
     _localQuantities = {};
+  }
+
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
+  // Debounce-Funktion: speichert nach 800 ms
+  void _debouncedSave(String itemId, int newQty) {
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 800), () {
+      final currentQty = ref.read(cartProvider).valueOrNull?.firstWhereOrNull((i) => i.id == itemId)?.quantity;
+      if (currentQty != null && newQty != currentQty) {
+        ref.read(cartProvider.notifier).updateQuantity(itemId, newQty);
+      }
+    });
   }
 
   @override
@@ -103,31 +122,30 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                       IconButton(
                         icon: const Icon(Icons.remove),
                         onPressed: () {
+                          final newQty = localQty > 1 ? localQty - 1 : 0;
                           setState(() {
-                            if (localQty > 1) {
-                              _localQuantities[item.id] = localQty - 1;
+                            if (newQty > 0) {
+                              _localQuantities[item.id] = newQty;
                             } else {
                               _localQuantities.remove(item.id);
                             }
                           });
+                          if (newQty > 0) {
+                            _debouncedSave(item.id, newQty);
+                          } else {
+                            ref.read(cartProvider.notifier).removeFromCart(item.id);
+                          }
                         },
                       ),
                       Text('$localQty'),
                       IconButton(
                         icon: const Icon(Icons.add),
                         onPressed: () {
+                          final newQty = localQty + 1;
                           setState(() {
-                            _localQuantities[item.id] = localQty + 1;
+                            _localQuantities[item.id] = newQty;
                           });
-                        },
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.check, color: Colors.green),
-                        tooltip: 'Änderungen speichern',
-                        onPressed: () {
-                          if (localQty != item.quantity) {
-                            ref.read(cartProvider.notifier).updateQuantity(item.id, localQty);
-                          }
+                          _debouncedSave(item.id, newQty);
                         },
                       ),
                       IconButton(
