@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,9 +7,8 @@ import '../providers/cart_provider.dart';
 
 Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOptions) async {
   final allOptionIds = <String>{};
-  final allGroupIds = selectedOptions.keys.toList(); // Alle Gruppen-IDs sammeln
+  final allGroupIds = selectedOptions.keys.toList();
 
-  // 1. Gruppen-Namen nachladen
   Map<String, String> groupNameMap = {};
   if (allGroupIds.isNotEmpty) {
     final groupsResponse = await supabase
@@ -18,7 +18,6 @@ Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOption
     groupNameMap = {for (final g in groupsResponse) g['id'] as String: g['name'] as String};
   }
 
-  // 2. Option-Namen nachladen
   for (final value in selectedOptions.values) {
     if (value is Iterable) {
       allOptionIds.addAll(value.cast<String>());
@@ -38,7 +37,6 @@ Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOption
     optionNameMap = {for (final o in optionsResponse) o['id'] as String: o['name'] as String};
   }
 
-  // Debug-Ausgabe (in Konsole schauen!)
   print('Group-Namen: $groupNameMap');
   print('Option-Namen: $optionNameMap');
 
@@ -48,11 +46,25 @@ Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOption
   };
 }
 
-class CartScreen extends ConsumerWidget {
+class CartScreen extends ConsumerStatefulWidget {
   const CartScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends ConsumerState<CartScreen> {
+  // Lokaler State für Mengen – verhindert Flackern
+  late Map<String, int> _localQuantities;
+
+  @override
+  void initState() {
+    super.initState();
+    _localQuantities = {};
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final cartAsync = ref.watch(cartProvider);
 
     return Scaffold(
@@ -67,183 +79,183 @@ class CartScreen extends ConsumerWidget {
             return const Center(child: Text('Warenkorb ist leer'));
           }
 
-          return FutureBuilder<Map<String, String>>(
-            future: _loadOptionNames(items.fold<Map<String, dynamic>>(
-              {},
-                  (map, item) => {...map, ...item.selectedOptions},
-            )),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text('Fehler beim Laden der Optionen: ${snapshot.error}'));
-              }
+          // Lokale Mengen initialisieren (nur einmal)
+          if (_localQuantities.isEmpty) {
+            for (final item in items) {
+              _localQuantities[item.id] = item.quantity;
+            }
+          }
 
-              final nameMap = snapshot.data ?? {};
+          return ListView.builder(
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final localQty = _localQuantities[item.id] ?? item.quantity;
 
-              return ListView.builder(
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    child: ExpansionTile(
-                      title: Text(item.dishName),
-                      subtitle: Text(item.dishDescription),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.remove),
-                            onPressed: () {
-                              if (item.quantity > 1) {
-                                ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity - 1);
-                              } else {
-                                ref.read(cartProvider.notifier).removeFromCart(item.id);
-                              }
-                            },
-                          ),
-                          Text('${item.quantity}'),
-                          IconButton(
-                            icon: const Icon(Icons.add),
-                            onPressed: () => ref.read(cartProvider.notifier).updateQuantity(item.id, item.quantity + 1),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => ref.read(cartProvider.notifier).removeFromCart(item.id),
-                          ),
-                        ],
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: ExpansionTile(
+                  title: Text(item.dishName),
+                  subtitle: Text(item.dishDescription),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove),
+                        onPressed: () {
+                          setState(() {
+                            if (localQty > 1) {
+                              _localQuantities[item.id] = localQty - 1;
+                            } else {
+                              _localQuantities.remove(item.id);
+                            }
+                          });
+                        },
                       ),
-                      children: [
-                        if (item.selectedOptions.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: FutureBuilder<Map<String, String>>(
-                              future: _loadOptionNames(item.selectedOptions),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState == ConnectionState.waiting) {
-                                  return const Text('Lade Optionen...');
-                                }
-                                if (snapshot.hasError) {
-                                  return Text('Fehler beim Laden der Optionen: ${snapshot.error}');
-                                }
+                      Text('$localQty'),
+                      IconButton(
+                        icon: const Icon(Icons.add),
+                        onPressed: () {
+                          setState(() {
+                            _localQuantities[item.id] = localQty + 1;
+                          });
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.check, color: Colors.green),
+                        tooltip: 'Änderungen speichern',
+                        onPressed: () {
+                          if (localQty != item.quantity) {
+                            ref.read(cartProvider.notifier).updateQuantity(item.id, localQty);
+                          }
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () => ref.read(cartProvider.notifier).removeFromCart(item.id),
+                      ),
+                    ],
+                  ),
+                  children: [
+                    if (item.selectedOptions.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: FutureBuilder<Map<String, String>>(
+                          future: _loadOptionNames(item.selectedOptions),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Text('Lade Optionen...');
+                            }
+                            if (snapshot.hasError) {
+                              return Text('Fehler beim Laden der Optionen: ${snapshot.error}');
+                            }
 
-                                final nameMap = snapshot.data ?? {};
+                            final nameMap = snapshot.data ?? {};
 
-                                return Align(
-                                  alignment: Alignment.centerLeft, // ← das sorgt für garantiert linksbündig
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text('Gewählte Optionen:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            return Align(
+                              alignment: Alignment.centerLeft,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Gewählte Optionen:', style: TextStyle(fontWeight: FontWeight.bold)),
 
-                                      // Einmaliger, sauberer Abstand vor der Liste
-                                      const SizedBox(height: 12),
+                                  const SizedBox(height: 12),
 
-                                      Builder(
-                                        builder: (context) {
-                                          final selectedOptions = item.selectedOptions;
-                                          print('=== DEBUG: selectedOptions für Item ${item.id} ===');
-                                          print('Rohdaten: $selectedOptions');
-                                          print('Anzahl Gruppen: ${selectedOptions.length}');
+                                  Builder(
+                                    builder: (context) {
+                                      final selectedOptions = item.selectedOptions;
+                                      print('=== DEBUG: selectedOptions für Item ${item.id} ===');
+                                      print('Rohdaten: $selectedOptions');
+                                      print('Anzahl Gruppen: ${selectedOptions.length}');
 
-                                          if (selectedOptions.isEmpty) {
-                                            print('Keine Optionen ausgewählt');
-                                            return const Padding(
-                                              padding: EdgeInsets.only(left: 16, top: 4),
-                                              child: Text('Keine Optionen gewählt', style: TextStyle(color: Colors.grey)),
+                                      if (selectedOptions.isEmpty) {
+                                        print('Keine Optionen ausgewählt');
+                                        return const Padding(
+                                          padding: EdgeInsets.only(left: 16, top: 4),
+                                          child: Text('Keine Optionen gewählt', style: TextStyle(color: Colors.grey)),
+                                        );
+                                      }
+
+                                      final List<Widget> optionLines = [];
+
+                                      selectedOptions.forEach((groupId, rawValue) {
+                                        final groupName = nameMap[groupId] ?? 'Gruppe $groupId';
+                                        print('Gruppe: $groupName (ID: $groupId) - Typ: ${rawValue.runtimeType}');
+
+                                        dynamic value = rawValue;
+
+                                        if (value is String) {
+                                          final optName = nameMap[value] ?? value;
+                                          print('  - Single: $optName');
+                                          optionLines.add(
+                                            Padding(
+                                              padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
+                                              child: Text('$groupName: $optName'),
+                                            ),
+                                          );
+                                        } else if (value is Iterable) {
+                                          final opts = value.map((e) => e.toString()).toList();
+                                          print('  - Multi (${opts.length} Optionen): ${opts.join(', ')}');
+                                          for (final optId in opts) {
+                                            final optName = nameMap[optId] ?? optId;
+                                            optionLines.add(
+                                              Padding(
+                                                padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2),
+                                                child: Text('$groupName: $optName'),
+                                              ),
                                             );
                                           }
-
-                                          final List<Widget> optionLines = [];
-
-                                          selectedOptions.forEach((groupId, rawValue) {
-                                            final groupName = nameMap[groupId] ?? 'Gruppe $groupId';
-                                            print('Gruppe: $groupName (ID: $groupId) - Typ: ${rawValue.runtimeType}');
-
-                                            dynamic value = rawValue;
-
-                                            // Single: String
-                                            if (value is String) {
-                                              final optName = nameMap[value] ?? value;
-                                              print('  - Single: $optName');
+                                        } else if (value is Map) {
+                                          print('  - Quantity (${value.length} Optionen):');
+                                          value.forEach((optIdRaw, qtyRaw) {
+                                            final optId = optIdRaw.toString();
+                                            final qty = (qtyRaw is int) ? qtyRaw : int.tryParse(qtyRaw.toString()) ?? 0;
+                                            if (qty > 0) {
+                                              final optName = nameMap[optId] ?? optId;
+                                              print('    - $optName (${qty}x)');
                                               optionLines.add(
                                                 Padding(
-                                                  padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4), // ← einheitlich 32
-                                                  child: Text('$groupName: $optName'),
-                                                ),
-                                              );
-                                            }
-                                            // Multi: Iterable (List oder Set)
-                                            else if (value is Iterable) {
-                                              final opts = value.map((e) => e.toString()).toList();
-                                              print('  - Multi (${opts.length} Optionen): ${opts.join(', ')}');
-                                              for (final optId in opts) {
-                                                final optName = nameMap[optId] ?? optId;
-                                                optionLines.add(
-                                                  Padding(
-                                                    padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2), // ← einheitlich 32
-                                                    child: Text('$groupName: $optName'),
-                                                  ),
-                                                );
-                                              }
-                                            }
-                                            // Quantity: Map
-                                            else if (value is Map) {
-                                              print('  - Quantity (${value.length} Optionen):');
-                                              value.forEach((optIdRaw, qtyRaw) {
-                                                final optId = optIdRaw.toString();
-                                                final qty = (qtyRaw is int) ? qtyRaw : int.tryParse(qtyRaw.toString()) ?? 0;
-                                                if (qty > 0) {
-                                                  final optName = nameMap[optId] ?? optId;
-                                                  print('    - $optName (${qty}x)');
-                                                  optionLines.add(
-                                                    Padding(
-                                                      padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2), // ← einheitlich 32
-                                                      child: Text('$groupName: $optName (${qty}x)'),
-                                                    ),
-                                                  );
-                                                }
-                                              });
-                                            }
-                                            else {
-                                              print('  - Unbekannter Typ: ${value.runtimeType} - $value');
-                                              optionLines.add(
-                                                Padding(
-                                                  padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
-                                                  child: Text('$groupName: [Unbekanntes Format]', style: TextStyle(color: Colors.orange)),
+                                                  padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2),
+                                                  child: Text('$groupName: $optName (${qty}x)'),
                                                 ),
                                               );
                                             }
                                           });
-
-                                          print('Gesamt Optionen-Zeilen: ${optionLines.length}');
-                                          print('=== DEBUG Ende ===');
-
-                                          if (optionLines.isEmpty) {
-                                            return const Padding(
-                                              padding: EdgeInsets.only(left: 16, top: 4),
-                                              child: Text('Keine ausgewählten Optionen', style: TextStyle(color: Colors.grey)),
-                                            );
-                                          }
-
-                                          return Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: optionLines,
+                                        } else {
+                                          print('  - Unbekannter Typ: ${value.runtimeType} - $value');
+                                          optionLines.add(
+                                            Padding(
+                                              padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
+                                              child: Text('$groupName: [Unbekanntes Format]', style: TextStyle(color: Colors.orange)),
+                                            ),
                                           );
-                                        },
-                                      ),
-                                    ],
+                                        }
+                                      });
+
+                                      print('Gesamt Optionen-Zeilen: ${optionLines.length}');
+                                      print('=== DEBUG Ende ===');
+
+                                      if (optionLines.isEmpty) {
+                                        return const Padding(
+                                          padding: EdgeInsets.only(left: 16, top: 4),
+                                          child: Text('Keine ausgewählten Optionen', style: TextStyle(color: Colors.grey)),
+                                        );
+                                      }
+
+                                      return Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: optionLines,
+                                      );
+                                    },
                                   ),
-                                );
-                              },
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
               );
             },
           );
