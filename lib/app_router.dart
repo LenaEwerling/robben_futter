@@ -10,7 +10,7 @@ import '../screens/login_screen.dart';
 import '../screens/start_screen.dart';
 import '../screens/dishes_list.dart';
 import '../screens/dish_detail_screen.dart';
-import '../screens/cart_screen.dart'; // ← dein Warenkorb-Screen
+import '../screens/cart_screen.dart'; // ← NEU: Import des Warenkorb-Screens
 
 final goRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -116,8 +116,8 @@ class _ShellWithBottomNav extends ConsumerWidget {
         preferredSize: const Size.fromHeight(100),
         child: AppBar(
           toolbarHeight: 100,
-          title: Image.asset(
-            'assets/Logo.png',
+          title: SvgPicture.asset(
+            'assets/Logo.svg',
             height: 80,
             fit: BoxFit.contain,
           ),

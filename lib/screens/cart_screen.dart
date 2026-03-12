@@ -118,7 +118,7 @@ class CartScreen extends ConsumerWidget {
                       children: [
                         if (item.selectedOptions.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.all(16),
                             child: FutureBuilder<Map<String, String>>(
                               future: _loadOptionNames(item.selectedOptions),
                               builder: (context, snapshot) {
@@ -126,47 +126,114 @@ class CartScreen extends ConsumerWidget {
                                   return const Text('Lade Optionen...');
                                 }
                                 if (snapshot.hasError) {
-                                  return Text('Fehler: ${snapshot.error}');
+                                  return Text('Fehler beim Laden der Optionen: ${snapshot.error}');
                                 }
 
                                 final nameMap = snapshot.data ?? {};
 
                                 return Align(
-                                  alignment: Alignment.centerLeft, // ← erzwingt linksbündig
+                                  alignment: Alignment.centerLeft, // ← das sorgt für garantiert linksbündig
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       const Text('Gewählte Optionen:', style: TextStyle(fontWeight: FontWeight.bold)),
-                                      const SizedBox(height: 8),
-                                      ...item.selectedOptions.entries.map((entry) {
-                                        final groupId = entry.key;
-                                        final groupName = nameMap[groupId] ?? groupId;
-                                        final value = entry.value;
 
-                                        if (value is Set<String>) {
-                                          final names = value.map((id) => nameMap[id] ?? id).join(', ');
-                                          return Padding(
-                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                            child: Text('$groupName: $names'),
+                                      // Einmaliger, sauberer Abstand vor der Liste
+                                      const SizedBox(height: 12),
+
+                                      Builder(
+                                        builder: (context) {
+                                          final selectedOptions = item.selectedOptions;
+                                          print('=== DEBUG: selectedOptions für Item ${item.id} ===');
+                                          print('Rohdaten: $selectedOptions');
+                                          print('Anzahl Gruppen: ${selectedOptions.length}');
+
+                                          if (selectedOptions.isEmpty) {
+                                            print('Keine Optionen ausgewählt');
+                                            return const Padding(
+                                              padding: EdgeInsets.only(left: 16, top: 4),
+                                              child: Text('Keine Optionen gewählt', style: TextStyle(color: Colors.grey)),
+                                            );
+                                          }
+
+                                          final List<Widget> optionLines = [];
+
+                                          selectedOptions.forEach((groupId, rawValue) {
+                                            final groupName = nameMap[groupId] ?? 'Gruppe $groupId';
+                                            print('Gruppe: $groupName (ID: $groupId) - Typ: ${rawValue.runtimeType}');
+
+                                            dynamic value = rawValue;
+
+                                            // Single: String
+                                            if (value is String) {
+                                              final optName = nameMap[value] ?? value;
+                                              print('  - Single: $optName');
+                                              optionLines.add(
+                                                Padding(
+                                                  padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4), // ← einheitlich 32
+                                                  child: Text('$groupName: $optName'),
+                                                ),
+                                              );
+                                            }
+                                            // Multi: Iterable (List oder Set)
+                                            else if (value is Iterable) {
+                                              final opts = value.map((e) => e.toString()).toList();
+                                              print('  - Multi (${opts.length} Optionen): ${opts.join(', ')}');
+                                              for (final optId in opts) {
+                                                final optName = nameMap[optId] ?? optId;
+                                                optionLines.add(
+                                                  Padding(
+                                                    padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2), // ← einheitlich 32
+                                                    child: Text('$groupName: $optName'),
+                                                  ),
+                                                );
+                                              }
+                                            }
+                                            // Quantity: Map
+                                            else if (value is Map) {
+                                              print('  - Quantity (${value.length} Optionen):');
+                                              value.forEach((optIdRaw, qtyRaw) {
+                                                final optId = optIdRaw.toString();
+                                                final qty = (qtyRaw is int) ? qtyRaw : int.tryParse(qtyRaw.toString()) ?? 0;
+                                                if (qty > 0) {
+                                                  final optName = nameMap[optId] ?? optId;
+                                                  print('    - $optName (${qty}x)');
+                                                  optionLines.add(
+                                                    Padding(
+                                                      padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2), // ← einheitlich 32
+                                                      child: Text('$groupName: $optName (${qty}x)'),
+                                                    ),
+                                                  );
+                                                }
+                                              });
+                                            }
+                                            else {
+                                              print('  - Unbekannter Typ: ${value.runtimeType} - $value');
+                                              optionLines.add(
+                                                Padding(
+                                                  padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
+                                                  child: Text('$groupName: [Unbekanntes Format]', style: TextStyle(color: Colors.orange)),
+                                                ),
+                                              );
+                                            }
+                                          });
+
+                                          print('Gesamt Optionen-Zeilen: ${optionLines.length}');
+                                          print('=== DEBUG Ende ===');
+
+                                          if (optionLines.isEmpty) {
+                                            return const Padding(
+                                              padding: EdgeInsets.only(left: 16, top: 4),
+                                              child: Text('Keine ausgewählten Optionen', style: TextStyle(color: Colors.grey)),
+                                            );
+                                          }
+
+                                          return Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: optionLines,
                                           );
-                                        } else if (value is Map<String, int>) {
-                                          final names = value.entries.map((e) {
-                                            final name = nameMap[e.key] ?? e.key;
-                                            return '$name (${e.value}x)';
-                                          }).join(', ');
-                                          return Padding(
-                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                            child: Text('$groupName: $names'),
-                                          );
-                                        } else if (value is String) {
-                                          final name = nameMap[value] ?? value;
-                                          return Padding(
-                                            padding: const EdgeInsets.only(left: 16, top: 4, bottom: 4),
-                                            child: Text('$groupName: $name'),
-                                          );
-                                        }
-                                        return const SizedBox.shrink();
-                                      }).toList(),
+                                        },
+                                      ),
                                     ],
                                   ),
                                 );
