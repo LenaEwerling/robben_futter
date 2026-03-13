@@ -1,8 +1,7 @@
-import 'dart:async';
-
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
 
 import '../main.dart';
 import '../providers/cart_provider.dart';
@@ -53,10 +52,7 @@ class CartScreen extends ConsumerStatefulWidget {
 }
 
 class _CartScreenState extends ConsumerState<CartScreen> {
-  // Lokaler State für Mengen – verhindert Flackern
   late Map<String, int> _localQuantities;
-
-  // Debounce-Timer – speichert nach 800 ms ohne weitere Änderung
   Timer? _debounceTimer;
 
   @override
@@ -71,7 +67,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
     super.dispose();
   }
 
-  // Debounce-Funktion: speichert nach 800 ms
   void _debouncedSave(String itemId, int newQty) {
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(milliseconds: 800), () {
@@ -98,7 +93,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
             return const Center(child: Text('Warenkorb ist leer'));
           }
 
-          // Lokale Mengen initialisieren (nur einmal)
           if (_localQuantities.isEmpty) {
             for (final item in items) {
               _localQuantities[item.id] = item.quantity;
@@ -119,35 +113,35 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove),
-                        onPressed: () {
-                          final newQty = localQty > 1 ? localQty - 1 : 0;
-                          setState(() {
-                            if (newQty > 0) {
-                              _localQuantities[item.id] = newQty;
-                            } else {
-                              _localQuantities.remove(item.id);
-                            }
-                          });
-                          if (newQty > 0) {
-                            _debouncedSave(item.id, newQty);
-                          } else {
-                            ref.read(cartProvider.notifier).removeFromCart(item.id);
-                          }
-                        },
-                      ),
+                      // IconButton(
+                      //   icon: const Icon(Icons.remove),
+                      //   onPressed: () {
+                      //     final newQty = localQty > 1 ? localQty - 1 : 0;
+                      //     setState(() {
+                      //       if (newQty > 0) {
+                      //         _localQuantities[item.id] = newQty;
+                      //       } else {
+                      //         _localQuantities.remove(item.id);
+                      //       }
+                      //     });
+                      //     if (newQty > 0) {
+                      //       _debouncedSave(item.id, newQty);
+                      //     } else {
+                      //       ref.read(cartProvider.notifier).removeFromCart(item.id);
+                      //     }
+                      //   },
+                      // ),
                       Text('$localQty'),
-                      IconButton(
-                        icon: const Icon(Icons.add),
-                        onPressed: () {
-                          final newQty = localQty + 1;
-                          setState(() {
-                            _localQuantities[item.id] = newQty;
-                          });
-                          _debouncedSave(item.id, newQty);
-                        },
-                      ),
+                      // IconButton(
+                      //   icon: const Icon(Icons.add),
+                      //   onPressed: () {
+                      //     final newQty = localQty + 1;
+                      //     setState(() {
+                      //       _localQuantities[item.id] = newQty;
+                      //     });
+                      //     _debouncedSave(item.id, newQty);
+                      //   },
+                      // ),
                       IconButton(
                         icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => ref.read(cartProvider.notifier).removeFromCart(item.id),
@@ -182,12 +176,8 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                   Builder(
                                     builder: (context) {
                                       final selectedOptions = item.selectedOptions;
-                                      print('=== DEBUG: selectedOptions für Item ${item.id} ===');
-                                      print('Rohdaten: $selectedOptions');
-                                      print('Anzahl Gruppen: ${selectedOptions.length}');
 
                                       if (selectedOptions.isEmpty) {
-                                        print('Keine Optionen ausgewählt');
                                         return const Padding(
                                           padding: EdgeInsets.only(left: 16, top: 4),
                                           child: Text('Keine Optionen gewählt', style: TextStyle(color: Colors.grey)),
@@ -198,13 +188,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
 
                                       selectedOptions.forEach((groupId, rawValue) {
                                         final groupName = nameMap[groupId] ?? 'Gruppe $groupId';
-                                        print('Gruppe: $groupName (ID: $groupId) - Typ: ${rawValue.runtimeType}');
 
                                         dynamic value = rawValue;
 
                                         if (value is String) {
                                           final optName = nameMap[value] ?? value;
-                                          print('  - Single: $optName');
                                           optionLines.add(
                                             Padding(
                                               padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
@@ -213,7 +201,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                           );
                                         } else if (value is Iterable) {
                                           final opts = value.map((e) => e.toString()).toList();
-                                          print('  - Multi (${opts.length} Optionen): ${opts.join(', ')}');
                                           for (final optId in opts) {
                                             final optName = nameMap[optId] ?? optId;
                                             optionLines.add(
@@ -224,13 +211,11 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                             );
                                           }
                                         } else if (value is Map) {
-                                          print('  - Quantity (${value.length} Optionen):');
                                           value.forEach((optIdRaw, qtyRaw) {
                                             final optId = optIdRaw.toString();
                                             final qty = (qtyRaw is int) ? qtyRaw : int.tryParse(qtyRaw.toString()) ?? 0;
                                             if (qty > 0) {
                                               final optName = nameMap[optId] ?? optId;
-                                              print('    - $optName (${qty}x)');
                                               optionLines.add(
                                                 Padding(
                                                   padding: const EdgeInsets.only(left: 32, top: 2, bottom: 2),
@@ -240,7 +225,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                             }
                                           });
                                         } else {
-                                          print('  - Unbekannter Typ: ${value.runtimeType} - $value');
                                           optionLines.add(
                                             Padding(
                                               padding: const EdgeInsets.only(left: 32, top: 4, bottom: 4),
@@ -249,9 +233,6 @@ class _CartScreenState extends ConsumerState<CartScreen> {
                                           );
                                         }
                                       });
-
-                                      print('Gesamt Optionen-Zeilen: ${optionLines.length}');
-                                      print('=== DEBUG Ende ===');
 
                                       if (optionLines.isEmpty) {
                                         return const Padding(
