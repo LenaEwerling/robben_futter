@@ -1,10 +1,13 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'dart:async';
 
 import '../main.dart';
+import '../providers/auth_providers.dart';
 import '../providers/cart_provider.dart';
+import '../providers/dish_detail_provider.dart';
 
 Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOptions) async {
   final allOptionIds = <String>{};
@@ -264,10 +267,64 @@ class _CartScreenState extends ConsumerState<CartScreen> {
           ? Padding(
         padding: const EdgeInsets.all(16),
         child: FilledButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Bestellung wird gesendet...')),
-            );
+          onPressed: () async {
+            final items = cartAsync.value ?? [];
+            if (items.isEmpty) return;
+
+            try {
+              // 1. Alle Pflicht-Checks (pro Item + gesamt)
+              for (final item in items) {
+                // Hier kannst du später die Limits prüfen (dish.stock, option.stock / qty usw.)
+                if (item.quantity <= 0) {
+                  throw Exception('Ungültige Menge bei ${item.dishName}');
+                }
+              }
+
+              // 2. User holen
+              final user = ref.read(authNotifierProvider).value;
+              if (user == null) throw Exception('Nicht eingeloggt');
+
+              // 3. Items für RPC vorbereiten (korrekte Typen, keine extra Anführungszeichen)
+              final List<Map<String, dynamic>> preparedItems = items.map((item) {
+                return {
+                  'dish_id': item.dishId, // UUID als String (Supabase konvertiert automatisch)
+                  'quantity': item.quantity,
+                  'selected_options': item.selectedOptions, // JSONB wird automatisch erkannt
+                };
+              }).toList();
+
+              // 4. RPC aufrufen (process_cart_order)
+              final response = await supabase.rpc('process_cart_order', params: {
+                'p_user_id': user.id,
+                'p_items': preparedItems,
+              });
+
+              if (response['success'] != true) {
+                throw Exception(response['message'] ?? 'Unbekannter Fehler');
+              }
+
+              // Erfolg
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Bestellung erfolgreich!'), backgroundColor: Colors.green),
+              );
+
+              // Cart leeren
+              ref.read(cartProvider.notifier).clearCart();
+
+              // Dish-Provider für alle betroffenen Gerichte invalidieren
+              for (final item in items) {
+                ref.invalidate(dishDetailProvider(item.dishId));
+              }
+
+              // Zurück zur Liste
+              context.goNamed('dishes-list');
+
+            } catch (e, st) {
+              print('Bestell-Fehler: $e\n$st');
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Fehler beim Bestellen: $e'), backgroundColor: Colors.red),
+              );
+            }
           },
           child: const Text('Jetzt bestellen'),
         ),
