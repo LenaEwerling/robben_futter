@@ -8,6 +8,7 @@ import '../main.dart';
 import '../providers/auth_providers.dart';
 import '../providers/cart_provider.dart';
 import '../providers/dish_detail_provider.dart';
+import 'dishes_list.dart';
 
 Future<Map<String, String>> _loadOptionNames(Map<String, dynamic> selectedOptions) async {
   final allOptionIds = <String>{};
@@ -314,6 +315,7 @@ class _CartScreenState extends ConsumerState<CartScreen> {
               // Dish-Provider für alle betroffenen Gerichte invalidieren
               for (final item in items) {
                 ref.invalidate(dishDetailProvider(item.dishId));
+                ref.invalidate(dishesProvider); // Liste in DishesListScreen aktualisieren
               }
 
               // Zurück zur Liste

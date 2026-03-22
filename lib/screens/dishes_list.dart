@@ -7,17 +7,21 @@ import '../main.dart'; // supabase client
 import 'dish_detail_screen.dart';
 
 final dishesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return await supabase
+  final response = await supabase
       .from('dishes')
       .select('*, categories!inner(name, stock_quantity)')
       .order('name');
+
+  return response as List<Map<String, dynamic>>;
 });
 
 final categoriesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
-  return await supabase
+  final response = await supabase
       .from('categories')
       .select('id, name, stock_quantity')
       .order('name');
+
+  return response as List<Map<String, dynamic>>;
 });
 
 class DishesListScreen extends ConsumerStatefulWidget {
